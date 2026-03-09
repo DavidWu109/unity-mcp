@@ -102,6 +102,8 @@ namespace MCPForUnity.Editor.Tools.GameObjects
                         return GameObjectMoveRelative.Handle(@params, targetToken, searchMethod);
                     case "look_at":
                         return GameObjectLookAt.Handle(@params, targetToken, searchMethod);
+                    case "send_message":
+                        return HandleSendMessage(@params, targetToken, searchMethod);
 
                     default:
                         return new ErrorResponse($"Unknown action: '{action}'.");
@@ -112,6 +114,50 @@ namespace MCPForUnity.Editor.Tools.GameObjects
                 McpLog.Error($"[ManageGameObject] Action '{action}' failed: {e}");
                 return new ErrorResponse($"Internal error processing action '{action}': {e.Message}");
             }
+        }
+        // --- send_message action ---
+
+        private static object HandleSendMessage(JObject @params, JToken targetToken, string searchMethod)
+        {
+            if (targetToken == null)
+                return new ErrorResponse("'target' parameter is required for 'send_message' action.");
+
+            GameObject targetGo = GameObjectLookup.FindByTarget(targetToken,
+                searchMethod ?? (targetToken.Type == JTokenType.Integer ? "by_id" : "by_name"), true);
+            if (targetGo == null && int.TryParse(targetToken.ToString(), out int id))
+                targetGo = GameObjectLookup.FindById(id);
+            if (targetGo == null)
+                return new ErrorResponse($"Target GameObject '{targetToken}' not found.");
+
+            string methodName = ParamCoercion.CoerceString(@params["method_name"] ?? @params["methodName"], null);
+            if (string.IsNullOrEmpty(methodName))
+                return new ErrorResponse("'method_name' parameter is required for 'send_message' action.");
+
+            JToken paramToken = @params["param"];
+            object paramValue = null;
+
+            if (paramToken != null && paramToken.Type != JTokenType.Null)
+            {
+                paramValue = paramToken.Type switch
+                {
+                    JTokenType.Integer => paramToken.Value<int>(),
+                    JTokenType.Float => paramToken.Value<float>(),
+                    JTokenType.Boolean => paramToken.Value<bool>(),
+                    _ => paramToken.ToString()
+                };
+                targetGo.SendMessage(methodName, paramValue, SendMessageOptions.DontRequireReceiver);
+            }
+            else
+            {
+                targetGo.SendMessage(methodName, SendMessageOptions.DontRequireReceiver);
+            }
+
+            return new
+            {
+                success = true,
+                message = $"SendMessage '{methodName}' sent to '{targetGo.name}'.",
+                data = new { instanceID = targetGo.GetInstanceID(), methodName, param = paramValue }
+            };
         }
     }
 }

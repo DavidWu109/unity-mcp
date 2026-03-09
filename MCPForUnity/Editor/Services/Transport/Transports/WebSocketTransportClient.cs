@@ -30,11 +30,8 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
             TimeSpan.Zero,
             TimeSpan.FromSeconds(1),
             TimeSpan.FromSeconds(3),
-            TimeSpan.FromSeconds(5),
-            TimeSpan.FromSeconds(10),
-            TimeSpan.FromSeconds(30)
         };
-        private static readonly TimeSpan ReconnectTailInterval = TimeSpan.FromSeconds(30);
+        private static readonly TimeSpan ReconnectTailInterval = TimeSpan.FromSeconds(10);
 
         private static readonly TimeSpan DefaultKeepAliveInterval = TimeSpan.FromSeconds(15);
         private static readonly TimeSpan DefaultCommandTimeout = TimeSpan.FromSeconds(30);
@@ -794,11 +791,12 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
                     }
                 }
 
-                // Schedule exhausted — keep retrying every 30 s indefinitely so a transient
-                // server outage longer than ~49 s doesn't leave the plugin permanently dead.
-                McpLog.Warn($"[WebSocket] Initial reconnect schedule exhausted. Retrying every {ReconnectTailInterval.TotalSeconds}s until cancelled.");
+                // Schedule exhausted — retry a few more times then give up.
+                // For local development, failing fast is more useful than retrying forever.
+                const int maxTailRetries = 3;
+                McpLog.Warn($"[WebSocket] Initial reconnect schedule exhausted. Retrying up to {maxTailRetries} more times every {ReconnectTailInterval.TotalSeconds}s.");
                 _state = _state.WithError($"Server unreachable – retrying every {ReconnectTailInterval.TotalSeconds} s");
-                while (!token.IsCancellationRequested)
+                for (int tailAttempt = 0; tailAttempt < maxTailRetries && !token.IsCancellationRequested; tailAttempt++)
                 {
                     try { await Task.Delay(ReconnectTailInterval, token).ConfigureAwait(false); }
                     catch (OperationCanceledException) { return; }
@@ -811,6 +809,7 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
                         return;
                     }
                 }
+                McpLog.Warn("[WebSocket] All reconnect attempts failed. Use MCP window to manually reconnect.");
             }
             finally
             {

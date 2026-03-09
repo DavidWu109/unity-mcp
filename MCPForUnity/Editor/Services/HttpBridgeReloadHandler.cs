@@ -16,18 +16,34 @@ namespace MCPForUnity.Editor.Services
     {
         private static readonly TimeSpan[] ResumeRetrySchedule =
         {
-            TimeSpan.Zero,
             TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(2),
             TimeSpan.FromSeconds(3),
             TimeSpan.FromSeconds(5),
-            TimeSpan.FromSeconds(10),
-            TimeSpan.FromSeconds(30)
+            TimeSpan.FromSeconds(5),
         };
 
         static HttpBridgeReloadHandler()
         {
             AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
             AssemblyReloadEvents.afterAssemblyReload += OnAfterAssemblyReload;
+
+            // Auto-connect on editor startup: if the resume flag is set (session was active
+            // before the editor was closed/crashed), try to reconnect automatically.
+            // Use delayCall to ensure all editor subsystems are initialized first.
+            EditorApplication.delayCall += OnEditorStartup;
+        }
+
+        private static void OnEditorStartup()
+        {
+            bool useHttp = EditorConfigurationCache.Instance.UseHttpTransport;
+            bool hasFlag = EditorPrefs.GetBool(EditorPrefKeys.ResumeHttpAfterReload, false);
+
+            if (!useHttp || !hasFlag)
+                return;
+
+            McpLog.Info("[HTTP AutoConnect] Resume flag found on editor startup, attempting auto-connect...");
+            _ = ResumeHttpWithRetriesAsync();
         }
 
         private static void OnBeforeAssemblyReload()
@@ -35,21 +51,22 @@ namespace MCPForUnity.Editor.Services
             try
             {
                 var transport = MCPServiceLocator.TransportManager;
-                bool shouldResume = transport.IsRunning(TransportMode.Http);
+                bool isRunning = transport.IsRunning(TransportMode.Http);
 
-                if (shouldResume)
+                // The resume flag may already be set from session start (see SetResumeFlag).
+                // Only update it if the transport is actively running; never clear a flag
+                // that was set earlier — the WebSocket often disconnects before this callback
+                // fires (e.g., server ping timeout during compilation), so IsRunning() may
+                // return false even though we should resume.
+                if (isRunning)
                 {
                     EditorPrefs.SetBool(EditorPrefKeys.ResumeHttpAfterReload, true);
                 }
-                else
-                {
-                    EditorPrefs.DeleteKey(EditorPrefKeys.ResumeHttpAfterReload);
-                }
 
-                if (shouldResume)
+                // Force synchronous teardown to avoid orphaned sockets.
+                var client = transport.GetClient(TransportMode.Http);
+                if (client != null)
                 {
-                    // beforeAssemblyReload is synchronous; force a synchronous teardown so we do not
-                    // leave an orphaned socket due to an unfinished async close handshake.
                     transport.ForceStop(TransportMode.Http);
                 }
             }
@@ -57,6 +74,25 @@ namespace MCPForUnity.Editor.Services
             {
                 McpLog.Warn($"Failed to evaluate HTTP bridge reload state: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Call this when an HTTP session starts successfully, so domain reload can resume it.
+        /// </summary>
+        public static void SetResumeFlag()
+        {
+            if (EditorConfigurationCache.Instance.UseHttpTransport)
+            {
+                EditorPrefs.SetBool(EditorPrefKeys.ResumeHttpAfterReload, true);
+            }
+        }
+
+        /// <summary>
+        /// Call this when the user explicitly ends the session, so domain reload won't resume.
+        /// </summary>
+        public static void ClearResumeFlag()
+        {
+            EditorPrefs.DeleteKey(EditorPrefKeys.ResumeHttpAfterReload);
         }
 
         private static void OnAfterAssemblyReload()
@@ -67,10 +103,10 @@ namespace MCPForUnity.Editor.Services
                 // Only resume HTTP if it is still the selected transport.
                 bool useHttp = EditorConfigurationCache.Instance.UseHttpTransport;
                 resume = useHttp && EditorPrefs.GetBool(EditorPrefKeys.ResumeHttpAfterReload, false);
-                if (resume)
-                {
-                    EditorPrefs.DeleteKey(EditorPrefKeys.ResumeHttpAfterReload);
-                }
+                // Don't clear the flag here — keep it so editor restart can also auto-connect.
+                // The flag is only cleared when:
+                // 1. User explicitly clicks "End Session" (ClearResumeFlag)
+                // 2. ResumeHttpWithRetriesAsync succeeds (connection restored)
             }
             catch (Exception ex)
             {

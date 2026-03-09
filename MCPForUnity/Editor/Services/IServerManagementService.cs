@@ -60,5 +60,11 @@ namespace MCPForUnity.Editor.Services
         /// </summary>
         /// <returns>True if HTTP transport is enabled and URL satisfies local launch security policy</returns>
         bool CanStartLocalServer();
+
+        /// <summary>
+        /// Get the PID of the local HTTP server process listening on the configured port.
+        /// </summary>
+        /// <returns>PID if found, -1 otherwise</returns>
+        int GetLocalHttpServerPid();
     }
 }

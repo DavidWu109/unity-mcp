@@ -116,7 +116,19 @@ namespace MCPForUnity.Editor.Services.Transport
             };
         }
 
-        public bool IsRunning(TransportMode mode) => GetState(mode).IsConnected;
+        public bool IsRunning(TransportMode mode)
+        {
+            // Always check the actual client state to detect stale cached state.
+            // After WebSocket reconnection failure, the client sets _isConnected = false
+            // but the cached TransportManager state may still say Connected.
+            var client = GetClient(mode);
+            if (client != null && !client.IsConnected && GetState(mode).IsConnected)
+            {
+                // Sync cached state with reality
+                UpdateState(mode, client.State ?? TransportState.Disconnected(client.TransportName, "Connection lost"));
+            }
+            return GetState(mode).IsConnected;
+        }
 
         /// <summary>
         /// Synchronous teardown for shutdown/reload hooks where async awaits are not possible.

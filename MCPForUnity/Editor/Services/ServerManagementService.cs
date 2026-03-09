@@ -444,11 +444,27 @@ namespace MCPForUnity.Editor.Services
                     return false;
                 }
 
-                return TryConnectToLocalPort(uri.Host, uri.Port, timeoutMs: 50);
+                return TryConnectToLocalPort(uri.Host, uri.Port, timeoutMs: 500);
             }
             catch
             {
                 return false;
+            }
+        }
+
+        public int GetLocalHttpServerPid()
+        {
+            try
+            {
+                string httpUrl = HttpEndpointUtility.GetLocalBaseUrl();
+                if (!Uri.TryCreate(httpUrl, UriKind.Absolute, out var uri) || uri.Port <= 0)
+                    return -1;
+                var pids = GetListeningProcessIdsForPort(uri.Port);
+                return pids.Count > 0 ? pids[0] : -1;
+            }
+            catch
+            {
+                return -1;
             }
         }
 

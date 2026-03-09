@@ -628,3 +628,66 @@
 .unity-theme-light .manual-command-foldout > .unity-foldout__toggle {
     background-color: rgba(0, 0, 0, 0.03);
 }
+
+/* Status Dashboard */
+.status-dashboard {
+    margin-top: 8px;
+    margin-bottom: 8px;
+    border-width: 1px;
+    border-color: rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+    background-color: rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+}
+
+.dashboard-section {
+    padding: 8px 10px;
+}
+
+.dashboard-section-title {
+    font-size: 11px;
+    -unity-font-style: bold;
+    margin-bottom: 4px;
+    color: rgba(200, 200, 200, 0.9);
+}
+
+.dashboard-row {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 2px;
+    min-height: 18px;
+}
+
+.dashboard-status-text {
+    font-size: 12px;
+    -unity-font-style: bold;
+}
+
+.dashboard-detail-text {
+    font-size: 11px;
+    color: rgba(150, 150, 150, 1);
+    margin-left: 8px;
+}
+
+.dashboard-button {
+    margin-top: 4px;
+    margin-left: 0;
+}
+
+.dashboard-divider {
+    height: 1px;
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.unity-theme-light .status-dashboard {
+    border-color: rgba(0, 0, 0, 0.15);
+    background-color: rgba(0, 0, 0, 0.04);
+}
+
+.unity-theme-light .dashboard-section-title {
+    color: rgba(50, 50, 50, 0.9);
+}
+
+.unity-theme-light .dashboard-divider {
+    background-color: rgba(0, 0, 0, 0.1);
+}

@@ -47,6 +47,21 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
         private VisualElement statusIndicator;
         private Label connectionStatusLabel;
         private Button connectionToggleButton;
+        private VisualElement statusRow;
+
+        // Dashboard UI Elements
+        private VisualElement statusDashboard;
+        private VisualElement serverStatusDot;
+        private Label serverStatusText;
+        private Label serverPidText;
+        private Label serverPortText;
+        private VisualElement serverPortRow;
+        private Button dashboardServerButton;
+        private VisualElement sessionStatusDot;
+        private Label sessionStatusText;
+        private Label sessionPortText;
+        private VisualElement sessionPortRow;
+        private Button dashboardSessionButton;
 
         // API Key UI Elements (for remote-hosted mode)
         private VisualElement apiKeyRow;
@@ -105,6 +120,21 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
             statusIndicator = Root.Q<VisualElement>("status-indicator");
             connectionStatusLabel = Root.Q<Label>("connection-status");
             connectionToggleButton = Root.Q<Button>("connection-toggle");
+            statusRow = Root.Q<VisualElement>("status-row");
+
+            // Dashboard elements
+            statusDashboard = Root.Q<VisualElement>("status-dashboard");
+            serverStatusDot = Root.Q<VisualElement>("server-status-dot");
+            serverStatusText = Root.Q<Label>("server-status-text");
+            serverPidText = Root.Q<Label>("server-pid-text");
+            serverPortText = Root.Q<Label>("server-port-text");
+            serverPortRow = Root.Q<VisualElement>("server-port-row");
+            dashboardServerButton = Root.Q<Button>("dashboard-server-button");
+            sessionStatusDot = Root.Q<VisualElement>("session-status-dot");
+            sessionStatusText = Root.Q<Label>("session-status-text");
+            sessionPortText = Root.Q<Label>("session-port-text");
+            sessionPortRow = Root.Q<VisualElement>("session-port-row");
+            dashboardSessionButton = Root.Q<Button>("dashboard-session-button");
 
             // API Key UI Elements
             apiKeyRow = Root.Q<VisualElement>("api-key-row");
@@ -277,6 +307,12 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
 
             connectionToggleButton.clicked += OnConnectionToggleClicked;
 
+            // Dashboard buttons reuse same handlers
+            if (dashboardServerButton != null)
+                dashboardServerButton.clicked += OnHttpServerToggleClicked;
+            if (dashboardSessionButton != null)
+                dashboardSessionButton.clicked += OnConnectionToggleClicked;
+
             // API Key field callbacks
             if (apiKeyField != null)
             {
@@ -441,6 +477,107 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
             // For stdio session toggling, make End Session visually "danger" (red).
             // (HTTP Local uses the consolidated Start/Stop Server button instead.)
             connectionToggleButton?.EnableInClassList("server-running", isRunning && stdioSelected);
+
+            // --- Dashboard visibility & updates ---
+            bool showDashboard = showLocalServerControls && statusDashboard != null;
+            if (statusDashboard != null)
+                statusDashboard.style.display = showDashboard ? DisplayStyle.Flex : DisplayStyle.None;
+
+            // Hide the original status row and server control row when dashboard is shown
+            if (statusRow != null)
+                statusRow.style.display = showDashboard ? DisplayStyle.None : DisplayStyle.Flex;
+            if (httpServerControlRow != null)
+                httpServerControlRow.style.display = showDashboard ? DisplayStyle.None : DisplayStyle.Flex;
+            if (unitySocketPortRow != null)
+                unitySocketPortRow.style.display = showDashboard ? DisplayStyle.None : DisplayStyle.Flex;
+
+            if (showDashboard)
+                UpdateDashboard(isRunning);
+        }
+
+        private void UpdateDashboard(bool sessionActive)
+        {
+            // --- Python Server section ---
+            bool serverRunning = lastLocalServerRunning;
+            if (serverStatusDot != null)
+            {
+                serverStatusDot.RemoveFromClassList("connected");
+                serverStatusDot.RemoveFromClassList("disconnected");
+                serverStatusDot.AddToClassList(serverRunning ? "connected" : "disconnected");
+            }
+            if (serverStatusText != null)
+                serverStatusText.text = serverRunning ? "Running" : "Stopped";
+
+            if (serverRunning)
+            {
+                int pid = MCPServiceLocator.Server.GetLocalHttpServerPid();
+                if (serverPidText != null)
+                    serverPidText.text = pid > 0 ? $"PID {pid}" : "";
+
+                string httpUrl = HttpEndpointUtility.GetLocalBaseUrl();
+                int port = -1;
+                if (Uri.TryCreate(httpUrl, UriKind.Absolute, out var uri))
+                    port = uri.Port;
+                if (serverPortText != null)
+                    serverPortText.text = port > 0 ? $"Port {port}" : "";
+                if (serverPortRow != null)
+                    serverPortRow.style.display = port > 0 ? DisplayStyle.Flex : DisplayStyle.None;
+            }
+            else
+            {
+                if (serverPidText != null) serverPidText.text = "";
+                if (serverPortText != null) serverPortText.text = "";
+                if (serverPortRow != null) serverPortRow.style.display = DisplayStyle.None;
+            }
+
+            // Dashboard server button mirrors the original start-http-server-button
+            if (dashboardServerButton != null)
+            {
+                dashboardServerButton.text = serverRunning ? "Stop Server" : "Start Server";
+                dashboardServerButton.EnableInClassList("server-running", serverRunning);
+                bool canStart = TryGetLocalHttpLaunchPolicy(out _, out _);
+                dashboardServerButton.SetEnabled(!httpServerToggleInProgress && (serverRunning || canStart));
+            }
+
+            // --- Unity Session section ---
+            if (sessionStatusDot != null)
+            {
+                sessionStatusDot.RemoveFromClassList("connected");
+                sessionStatusDot.RemoveFromClassList("disconnected");
+                sessionStatusDot.AddToClassList(sessionActive ? "connected" : "disconnected");
+            }
+
+            if (sessionActive)
+            {
+                string projectDir = System.IO.Path.GetDirectoryName(Application.dataPath);
+                string instanceName = !string.IsNullOrEmpty(projectDir)
+                    ? System.IO.Path.GetFileName(projectDir) : "Unity";
+                if (string.IsNullOrEmpty(instanceName)) instanceName = "Unity";
+                if (sessionStatusText != null)
+                    sessionStatusText.text = $"Connected ({instanceName})";
+
+                var bridgeService = MCPServiceLocator.Bridge;
+                int wsPort = bridgeService.CurrentPort;
+                if (sessionPortText != null)
+                    sessionPortText.text = wsPort > 0 ? $"WS Port {wsPort}" : "";
+                if (sessionPortRow != null)
+                    sessionPortRow.style.display = wsPort > 0 ? DisplayStyle.Flex : DisplayStyle.None;
+            }
+            else
+            {
+                if (sessionStatusText != null) sessionStatusText.text = "No Session";
+                if (sessionPortText != null) sessionPortText.text = "";
+                if (sessionPortRow != null) sessionPortRow.style.display = DisplayStyle.None;
+            }
+
+            // Dashboard session button
+            if (dashboardSessionButton != null)
+            {
+                dashboardSessionButton.text = sessionActive ? "End Session" : "Start Session";
+                dashboardSessionButton.EnableInClassList("server-running", sessionActive);
+                bool canStartSession = serverRunning && !connectionToggleInProgress;
+                dashboardSessionButton.SetEnabled(sessionActive || canStartSession);
+            }
         }
 
         public void UpdateHttpServerCommandDisplay()
@@ -530,10 +667,17 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
             bool useHttp = (TransportProtocol)transportDropdown.value != TransportProtocol.Stdio;
             bool httpLocalSelected = IsHttpLocalSelected();
             bool httpRemoteSelected = transportDropdown != null && (TransportProtocol)transportDropdown.value == TransportProtocol.HTTPRemote;
+            bool showDashboard = httpLocalSelected && statusDashboard != null;
 
             httpUrlRow.style.display = useHttp ? DisplayStyle.Flex : DisplayStyle.None;
-            httpServerControlRow.style.display = useHttp && httpLocalSelected ? DisplayStyle.Flex : DisplayStyle.None;
-            unitySocketPortRow.style.display = useHttp ? DisplayStyle.None : DisplayStyle.Flex;
+
+            // When dashboard is active, hide the original server control, port, and status rows
+            httpServerControlRow.style.display = (useHttp && httpLocalSelected && !showDashboard) ? DisplayStyle.Flex : DisplayStyle.None;
+            unitySocketPortRow.style.display = (!useHttp && !showDashboard) ? DisplayStyle.Flex : DisplayStyle.None;
+            if (statusRow != null)
+                statusRow.style.display = showDashboard ? DisplayStyle.None : DisplayStyle.Flex;
+            if (statusDashboard != null)
+                statusDashboard.style.display = showDashboard ? DisplayStyle.Flex : DisplayStyle.None;
 
             // Manual Server Launch foldout only relevant for HTTP Local
             if (manualCommandFoldout != null)
@@ -704,6 +848,7 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
                     bool started = await bridgeService.StartAsync();
                     if (started)
                     {
+                        HttpBridgeReloadHandler.SetResumeFlag();
                         await VerifyBridgeConnectionAsync();
                         UpdateConnectionStatus();
                         return;
@@ -780,11 +925,9 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
             {
                 if (bridgeService.IsRunning)
                 {
-                    // Clear any resume flags when user manually ends the session to prevent
-                    // getting stuck in "Resuming..." state (the flag may have been set by a
-                    // domain reload that started just before the user clicked End Session)
+                    // Clear resume flags when user manually ends the session
                     try { EditorPrefs.DeleteKey(EditorPrefKeys.ResumeStdioAfterReload); } catch { }
-                    try { EditorPrefs.DeleteKey(EditorPrefKeys.ResumeHttpAfterReload); } catch { }
+                    HttpBridgeReloadHandler.ClearResumeFlag();
 
                     await bridgeService.StopAsync();
                 }
@@ -811,16 +954,28 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
                         return;
                     }
 
+                    // Force-cleanup any stale WebSocket client before starting.
+                    // This prevents hangs when the server was restarted and the old
+                    // WebSocket is in a dead state that StopAsync() can't gracefully close.
+                    var tm = MCPServiceLocator.TransportManager;
+                    var mode = EditorConfigurationCache.Instance.UseHttpTransport
+                        ? TransportMode.Http : TransportMode.Stdio;
+                    var existingClient = tm.GetClient(mode);
+                    if (existingClient != null && !existingClient.IsConnected)
+                    {
+                        McpLog.Info("Cleaning up stale transport before starting new session.");
+                        tm.ForceStop(mode);
+                    }
+
                     bool started = await bridgeService.StartAsync();
                     if (started)
                     {
+                        HttpBridgeReloadHandler.SetResumeFlag();
                         await VerifyBridgeConnectionAsync();
                     }
                     else
                     {
-                        var mode = EditorConfigurationCache.Instance.UseHttpTransport
-                            ? TransportMode.Http : TransportMode.Stdio;
-                        var state = MCPServiceLocator.TransportManager.GetState(mode);
+                        var state = tm.GetState(mode);
                         string errorMsg = state?.Error
                             ?? "Failed to start the MCP session. Check the server URL and that the server is running.";
                         EditorUtility.DisplayDialog("Connection Failed", errorMsg, "OK");

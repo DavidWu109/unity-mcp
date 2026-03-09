@@ -35,12 +35,39 @@
                 <ui:Label text="Unity Socket Port:" class="setting-label" />
                 <ui:TextField name="unity-port" class="port-field" />
             </ui:VisualElement>
-            <ui:VisualElement class="setting-row">
+            <ui:VisualElement class="setting-row" name="status-row">
                 <ui:VisualElement class="status-container">
                     <ui:VisualElement name="status-indicator" class="status-dot" />
                     <ui:Label name="connection-status" text="Disconnected" class="status-text" />
                 </ui:VisualElement>
                 <ui:Button name="connection-toggle" text="Start" class="action-button" />
+            </ui:VisualElement>
+            <!-- Status Dashboard (HTTP Local only) -->
+            <ui:VisualElement name="status-dashboard" class="status-dashboard">
+                <ui:VisualElement name="dashboard-server" class="dashboard-section">
+                    <ui:Label text="Python Server" class="dashboard-section-title" />
+                    <ui:VisualElement class="dashboard-row">
+                        <ui:VisualElement name="server-status-dot" class="status-dot" />
+                        <ui:Label name="server-status-text" text="Stopped" class="dashboard-status-text" />
+                        <ui:Label name="server-pid-text" text="" class="dashboard-detail-text" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="dashboard-row" name="server-port-row">
+                        <ui:Label name="server-port-text" text="" class="dashboard-detail-text" style="margin-left: 20px;" />
+                    </ui:VisualElement>
+                    <ui:Button name="dashboard-server-button" text="Start Server" class="action-button start-server-button dashboard-button" />
+                </ui:VisualElement>
+                <ui:VisualElement class="dashboard-divider" />
+                <ui:VisualElement name="dashboard-session" class="dashboard-section">
+                    <ui:Label text="Unity Session" class="dashboard-section-title" />
+                    <ui:VisualElement class="dashboard-row">
+                        <ui:VisualElement name="session-status-dot" class="status-dot" />
+                        <ui:Label name="session-status-text" text="No Session" class="dashboard-status-text" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="dashboard-row" name="session-port-row">
+                        <ui:Label name="session-port-text" text="" class="dashboard-detail-text" style="margin-left: 20px;" />
+                    </ui:VisualElement>
+                    <ui:Button name="dashboard-session-button" text="Start Session" class="action-button dashboard-button" />
+                </ui:VisualElement>
             </ui:VisualElement>
             <ui:Foldout name="manual-command-foldout" text="Manual Server Launch" value="false" class="manual-config-foldout">
                 <ui:VisualElement name="http-server-command-section" class="manual-config-content">

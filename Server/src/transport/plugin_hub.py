@@ -95,9 +95,10 @@ class PluginHub(WebSocketEndpoint):
     SERVER_TIMEOUT = 30
     COMMAND_TIMEOUT = 30
     # Server-side ping interval (seconds) - how often to send pings to Unity
-    PING_INTERVAL = 10
+    PING_INTERVAL = 15
     # Max time (seconds) to wait for pong before considering connection dead
-    PING_TIMEOUT = 20
+    # Increased from 20 to 45 to handle Unity Editor unfocused/compiling throttling
+    PING_TIMEOUT = 45
     # Timeout (seconds) for fast-fail commands like ping/read_console/get_editor_state.
     # Keep short so MCP clients aren't blocked during Unity compilation/reload/unfocused throttling.
     FAST_FAIL_TIMEOUT = 2.0
@@ -250,8 +251,14 @@ class PluginHub(WebSocketEndpoint):
                         )
                 if cls._registry:
                     await cls._registry.unregister(session_id)
-                logger.info(
-                    f"Plugin session {session_id} disconnected ({close_code})")
+                # Get project info before unregister clears it
+                project_name = "unknown"
+                if cls._registry:
+                    session = cls._registry._sessions.get(session_id)
+                    if session:
+                        project_name = getattr(session, 'project_name', 'unknown')
+                logger.warning(
+                    f"[MCP] Unity plugin disconnected: {project_name} (session={session_id}, code={close_code})")
 
     # ------------------------------------------------------------------
     # Public API
@@ -440,9 +447,9 @@ class PluginHub(WebSocketEndpoint):
             cls._ping_tasks[session_id] = ping_task
 
         if user_id:
-            logger.info(f"Plugin registered: {project_name} ({project_hash}) for user {user_id}")
+            logger.warning(f"[MCP] Unity plugin connected: {project_name}@{project_hash} (session={session_id}, user={user_id})")
         else:
-            logger.info(f"Plugin registered: {project_name} ({project_hash})")
+            logger.warning(f"[MCP] Unity plugin connected: {project_name}@{project_hash} (session={session_id})")
 
     async def _handle_register_tools(self, websocket: WebSocket, payload: RegisterToolsMessage) -> None:
         cls = type(self)
@@ -803,30 +810,23 @@ class PluginHub(WebSocketEndpoint):
         if cls._registry is None:
             raise RuntimeError("Plugin registry not configured")
 
-        # Bound waiting for Unity sessions. Default to 20s to handle domain reloads
-        # (which can take 10-20s after test runs or script changes).
+        # Bound waiting for Unity sessions. Default to 40s to handle domain reloads
+        # (which can take 10-30s after test runs or script changes, longer when
+        # Unity Editor is unfocused or has a large project like zszgclient).
         #
-        # NOTE: This wait can impact agentic workflows where domain reloads happen
-        # frequently (e.g., after test runs, script compilation). The 20s default
-        # balances handling slow reloads vs. avoiding unnecessary delays.
-        #
-        # TODO: Make this more deterministic by detecting Unity's actual reload state
-        # (e.g., via status file, heartbeat, or explicit "reloading" signal from Unity)
-        # rather than blindly waiting up to 20s. See Issue #657.
-        #
-        # Configurable via: UNITY_MCP_SESSION_RESOLVE_MAX_WAIT_S (default: 20.0, max: 20.0)
+        # Configurable via: UNITY_MCP_SESSION_RESOLVE_MAX_WAIT_S (default: 40.0, max: 60.0)
         try:
             max_wait_s = float(
-                os.environ.get("UNITY_MCP_SESSION_RESOLVE_MAX_WAIT_S", "20.0"))
+                os.environ.get("UNITY_MCP_SESSION_RESOLVE_MAX_WAIT_S", "40.0"))
         except ValueError as e:
             raw_val = os.environ.get(
-                "UNITY_MCP_SESSION_RESOLVE_MAX_WAIT_S", "20.0")
+                "UNITY_MCP_SESSION_RESOLVE_MAX_WAIT_S", "40.0")
             logger.warning(
-                "Invalid UNITY_MCP_SESSION_RESOLVE_MAX_WAIT_S=%r, using default 20.0: %s",
+                "Invalid UNITY_MCP_SESSION_RESOLVE_MAX_WAIT_S=%r, using default 40.0: %s",
                 raw_val, e)
-            max_wait_s = 20.0
-        # Clamp to [0, 20] to prevent misconfiguration from causing excessive waits
-        max_wait_s = max(0.0, min(max_wait_s, 20.0))
+            max_wait_s = 40.0
+        # Clamp to [0, 60] to allow longer waits for heavy projects
+        max_wait_s = max(0.0, min(max_wait_s, 60.0))
         if not retry_on_reload:
             max_wait_s = 0.0
         retry_ms = float(getattr(config, "reload_retry_ms", 250))
